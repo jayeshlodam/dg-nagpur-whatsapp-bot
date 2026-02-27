@@ -110,11 +110,14 @@ def handle_incoming_message(message, value):
     """
     Process incoming message and generate response
     """
+    sender_phone = None
     try:
         # Extract sender phone and message text
         sender_phone = message.get("from")
         message_text = None
         message_type = message.get("type")
+        
+        logger.info(f"🔍 Processing message type: {message_type} from {sender_phone}")
         
         # Handle different message types
         if message_type == "text":
@@ -130,38 +133,51 @@ def handle_incoming_message(message, value):
             message_text = f"[Media: {message_type}]"
         
         else:
-            logger.warning(f"Unsupported message type: {message_type}")
+            logger.warning(f"⚠️ Unsupported message type: {message_type}")
             return
         
         if not message_text:
-            logger.warning("No message text extracted")
+            logger.warning("⚠️ No message text extracted")
             return
         
-        logger.info(f"Message from {sender_phone}: {message_text}")
+        logger.info(f"📨 Message from {sender_phone}: {message_text}")
         
         # Track incoming message
-        db.track_metric("message_received")
+        try:
+            db.track_metric("message_received")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not track metric: {e}")
         
         # Process message through conversation flow
-        flow = ConversationFlow(sender_phone)
-        bot_response, next_state = flow.process_message(message_text)
+        try:
+            flow = ConversationFlow(sender_phone)
+            bot_response, next_state = flow.process_message(message_text)
+        except Exception as e:
+            logger.error(f"❌ Error in conversation flow: {str(e)}", exc_info=True)
+            bot_response = "Sorry, something went wrong. Please try again."
+            next_state = "error"
         
         # Send response
-        send_whatsapp_message(sender_phone, bot_response)
+        logger.info(f"📤 About to send response to {sender_phone}")
+        send_result = send_whatsapp_message(sender_phone, bot_response)
         
-        logger.info(f"Response sent to {sender_phone}: State={next_state}")
+        if send_result:
+            logger.info(f"✅ Response sent successfully to {sender_phone}: State={next_state}")
+        else:
+            logger.error(f"❌ Failed to send response to {sender_phone}")
         
     except Exception as e:
-        logger.error(f"Error handling message: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error handling message: {str(e)}", exc_info=True)
         # Send error message
-        try:
-            error_msg = ERROR_MESSAGE.format(
-                phone=AGENCY_PHONE,
-                email=AGENCY_EMAIL
-            )
-            send_whatsapp_message(sender_phone, error_msg)
-        except:
-            pass
+        if sender_phone:
+            try:
+                error_msg = ERROR_MESSAGE.format(
+                    phone=AGENCY_PHONE,
+                    email=AGENCY_EMAIL
+                )
+                send_whatsapp_message(sender_phone, error_msg)
+            except Exception as err:
+                logger.error(f"❌ Could not send error message: {err}")
 
 
 def send_whatsapp_message(recipient_phone, message_text):
