@@ -9,8 +9,8 @@ import os
 import json
 from dotenv import load_dotenv
 from config import (
-    WHATSAPP_API_VERSION, PHONE_NUMBER_ID, BUSINESS_ACCOUNT_ID,
-    WHATSAPP_TOKEN, AGENCY_PHONE, AGENCY_EMAIL, AGENCY_WEBSITE, AGENCY_LOCATION
+    WHATSAPP_API_VERSION,
+    AGENCY_PHONE, AGENCY_EMAIL, AGENCY_WEBSITE, AGENCY_LOCATION
 )
 from flows import ConversationFlow
 import logging
@@ -41,11 +41,22 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 # Get tokens from environment
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "your_verify_token")
-ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", WHATSAPP_TOKEN)
+ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+BUSINESS_ACCOUNT_ID = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
+
+# Log initialization
+logger = logging.getLogger(__name__)
+logger.info("="*60)
+logger.info("🔐 WhatsApp Configuration Check:")
+logger.info(f"✅ Verify Token: {'SET' if VERIFY_TOKEN else 'MISSING'}")
+logger.info(f"✅ Access Token: {'SET' if ACCESS_TOKEN else 'MISSING'}")
+logger.info(f"✅ Phone Number ID: {PHONE_NUMBER_ID if PHONE_NUMBER_ID else 'MISSING'}")
+logger.info(f"✅ Business Account ID: {BUSINESS_ACCOUNT_ID if BUSINESS_ACCOUNT_ID else 'MISSING'}")
+logger.info("="*60)
 
 
 # ===== WEBHOOK ENDPOINTS =====
@@ -158,6 +169,15 @@ def send_whatsapp_message(recipient_phone, message_text):
     Send message via WhatsApp Business API
     """
     try:
+        # Validate credentials
+        if not ACCESS_TOKEN:
+            logger.error("❌ ACCESS_TOKEN not set in environment variables!")
+            return False
+        
+        if not PHONE_NUMBER_ID:
+            logger.error("❌ PHONE_NUMBER_ID not set in environment variables!")
+            return False
+        
         url = f"https://graph.instagram.com/{WHATSAPP_API_VERSION}/{PHONE_NUMBER_ID}/messages"
         
         headers = {
@@ -175,18 +195,24 @@ def send_whatsapp_message(recipient_phone, message_text):
             }
         }
         
+        logger.info(f"📤 Sending message to {recipient_phone}")
+        logger.info(f"📍 API Endpoint: {url}")
+        
         response = requests.post(url, json=payload, headers=headers)
         
+        logger.info(f"📊 Response status: {response.status_code}")
+        
         if response.status_code in [200, 201]:
-            logger.info(f"Message sent successfully to {recipient_phone}")
+            logger.info(f"✅ Message sent successfully to {recipient_phone}")
             db.track_metric("message_sent")
             return True
         else:
-            logger.error(f"Failed to send message: {response.text}")
+            logger.error(f"❌ Failed to send message: HTTP {response.status_code}")
+            logger.error(f"❌ Response: {response.text}")
             return False
     
     except Exception as e:
-        logger.error(f"Error sending WhatsApp message: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error sending WhatsApp message: {str(e)}", exc_info=True)
         return False
 
 
