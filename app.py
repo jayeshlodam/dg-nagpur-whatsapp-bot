@@ -13,14 +13,24 @@ from config import (
     WHATSAPP_TOKEN, AGENCY_PHONE, AGENCY_EMAIL, AGENCY_WEBSITE, AGENCY_LOCATION
 )
 from flows import ConversationFlow
-from database import db
-from messages import OUT_OF_HOURS, THANK_YOU_MESSAGE, ERROR_MESSAGE
 import logging
 from datetime import datetime
 import requests
 
 # Load environment variables
 load_dotenv()
+
+# Import database after environment is loaded
+try:
+    from database import db
+    from messages import OUT_OF_HOURS, THANK_YOU_MESSAGE, ERROR_MESSAGE
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info("✅ Database and messages imported successfully")
+except Exception as e:
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.error(f"❌ Failed to import database or messages: {e}")
+    # Continue anyway - db will be initialized lazily
+    db = None
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -339,10 +349,21 @@ def api_get_bookings(date):
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
+    # Try to ensure database is initialized
+    try:
+        if db is None:
+            from database import db as db_fresh
+            db_list = db_fresh
+        else:
+            db_list = db
+    except:
+        db_list = None
+    
     return jsonify({
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "service": "DG Nagpur WhatsApp Chatbot"
+        "service": "DG Nagpur WhatsApp Chatbot",
+        "database": "connected" if db_list else "initializing"
     }), 200
 
 
@@ -363,14 +384,25 @@ if __name__ == '__main__':
     # For production, use a production WSGI server like Gunicorn
     # Example: gunicorn -w 4 -b 0.0.0.0:5000 app:app
     
-    debug_mode = os.getenv("DEBUG", "False") == "True"
-    port = int(os.getenv("PORT", 5000))
-    
-    logger.info(f"Starting DG Nagpur WhatsApp Chatbot on port {port}")
-    logger.info(f"Debug mode: {debug_mode}")
-    
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=debug_mode
-    )
+    try:
+        debug_mode = os.getenv("DEBUG", "False") == "True"
+        port = int(os.getenv("PORT", 5000))
+        
+        logger.info("="*60)
+        logger.info("🚀 Starting DG Nagpur WhatsApp Chatbot")
+        logger.info(f"📍 Port: {port}")
+        logger.info(f"🔧 Debug Mode: {debug_mode}")
+        logger.info(f"📧 Agency: info@dgnagpur.com")
+        logger.info("="*60)
+        
+        app.run(
+            host='0.0.0.0',
+            port=port,
+            debug=debug_mode,
+            use_reloader=False
+        )
+    except Exception as e:
+        logger.error(f"❌ Failed to start application: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
